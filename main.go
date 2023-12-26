@@ -11,14 +11,16 @@ import (
 	"github.com/cloudwego/hertz/pkg/app"
 	"github.com/cloudwego/hertz/pkg/app/server"
 	"github.com/cloudwego/hertz/pkg/common/hlog"
-	"github.com/cloudwego/hertz/pkg/common/utils"
 	"github.com/cloudwego/hertz/pkg/network/standard"
-	"github.com/cloudwego/hertz/pkg/protocol/consts"
+	hertzI18n "github.com/hertz-contrib/i18n"
 	"github.com/hertz-contrib/logger/accesslog"
 	hertzzap "github.com/hertz-contrib/logger/zap"
 	"github.com/hertz-contrib/pprof"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"go.uber.org/zap"
+	"golang.org/x/text/language"
 	"gopkg.in/natefinch/lumberjack.v2"
+	"gopkg.in/yaml.v3"
 )
 
 func main() {
@@ -31,9 +33,35 @@ func main() {
 	pprof.Register(h)
 	registerLog()
 
+	h.Use(hertzI18n.Localize(
+		hertzI18n.WithBundle(&hertzI18n.BundleCfg{
+			RootPath:         "./localize",
+			AcceptLanguage:   []language.Tag{language.Chinese, language.English},
+			DefaultLanguage:  language.Chinese,
+			FormatBundleFile: "yaml",
+			UnmarshalFunc:    yaml.Unmarshal,
+		}),
+		hertzI18n.WithGetLangHandle(func(c context.Context, ctx *app.RequestContext, defaultLang string) string {
+			lang := ctx.Query("lang")
+			if lang == "" {
+				return defaultLang
+			}
+			return lang
+		}),
+	))
+
 	h.Use(accesslog.New(accesslog.WithFormat("[${time}] ${status} - ${latency} ${method} ${path} ${queryParams}")))
-	h.GET("/ping", func(c context.Context, ctx *app.RequestContext) {
-		ctx.JSON(consts.StatusOK, utils.H{"message": "pong"})
+
+	h.GET("/:name", func(c context.Context, ctx *app.RequestContext) {
+		ctx.String(200, hertzI18n.MustGetMessage(&i18n.LocalizeConfig{
+			MessageID: "welcomeWithName",
+			TemplateData: map[string]string{
+				"name": ctx.Param("name"),
+			},
+		}))
+	})
+	h.GET("/", func(c context.Context, ctx *app.RequestContext) {
+		ctx.String(200, hertzI18n.MustGetMessage("welcome"))
 	})
 
 	h.Spin()
